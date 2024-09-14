@@ -1,10 +1,11 @@
 use hip_macros::*;
-
+mod device_info;
+use device_info::{hipDeviceProp_t, wrapped_hipGetDeviceProperties};
 use libloading;
 
 fn main() {
-  let a = my_macro!(
-r#"
+    let a = my_macro!(
+        r#"
 #define __HIP_PLATFORM_AMD__
 
 #include <algorithm>
@@ -120,13 +121,18 @@ extern "C" void hello_from_macro()
   //return errors;
 }
 "#
-  );
+    );
 
     println!("{:?}", a);
-    
 
-    unsafe {
-        a.unwrap().get::<unsafe extern "C" fn()>(b"hello_from_macro")
-            .unwrap()()
-    };
+
+    let a = unsafe { wrapped_hipGetDeviceProperties( 0) };
+
+    let mut data = [0;256];
+    data.copy_from_slice(&a.name);
+
+    println!(
+        "{}",
+        String::from_utf8_lossy(&data)
+    )
 }
