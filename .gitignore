@@ -3,3 +3,4 @@
 /.vscode
 file.cpp
 libfile.so
+*.out

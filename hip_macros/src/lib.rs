@@ -1,34 +1,46 @@
 extern crate proc_macro;
-use std::{fs::File, io::Write, process::Command, str::FromStr};
-extern crate cargo_emit;
 use libloading;
+use std::{
+    fs::File,
+    io::{Read, Write},
+    process::{Command, Stdio},
+    str::FromStr,
+};
+extern crate cargo_emit;
+use cargo_emit::warning;
 use proc_macro::TokenStream;
 #[proc_macro]
 pub fn my_macro(item: TokenStream) -> TokenStream {
-    let mut file = File::options()
-        .write(true)
-        .create(true)
-        .open("file.cpp")
+    let mut file = match File::create("./file.cpp") {
+        Ok(res) => res,
+        Err(err) => panic!("file creation error ~: {}", err),
+    };
+
+    let data = item.to_string();
+    let final_data = &data[3..data.len() - 2];
+
+    _ = file.write(final_data.as_bytes());
+
+    _ = file.flush();
+
+    let mut binding = Command::new("hipcc");
+    let cmd = binding
+        .args(["file.cpp", "-shared", "-fPIC", "-o", "libfile.so"])
+        .spawn()
         .unwrap();
 
-    _ = file.write(item.to_string().as_bytes());
+    if let Some(mut stdout) = cmd.stdout {
+        let mut s = String::new();
+        _ = stdout.read(unsafe { s.as_bytes_mut() });
+        warning!("{}", s);
+    }
+    if let Some(mut stderr) = cmd.stderr {
+        let mut s = String::new();
+        _ = stderr.read(unsafe { s.as_bytes_mut() });
+        panic!("{}", s);
+    }
 
-    let mut cmd = Command::new("/opt/rocm/bin/hipcc");
-    cmd.args(["file.cpp", "-shared", "-fPIC", "-o", "libfile.so"]);
-    let out = match cmd.output() {
-        Ok(ok) => ok,
-        Err(err) => panic!("{}", err),
-    };
-    let c_out = format!(
-        "{}\n{}",
-        String::from_utf8_lossy(out.stdout.as_ref()),
-        String::from_utf8_lossy(out.stdout.as_ref())
-    );
-
-    let tokens =  "
-    (unsafe { 
-        libloading::Library::new(\"./libfile.so\").unwrap()
-    },\"".to_owned() + &c_out + "\")";
+    let tokens = "(unsafe {libloading::Library::new(\"./libfile.so\")})";
 
     TokenStream::from_str(&tokens).unwrap()
 }
