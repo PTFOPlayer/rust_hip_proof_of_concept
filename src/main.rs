@@ -1,7 +1,7 @@
 use hip_macros::*;
-mod device_info;
-use device_info::{hipDeviceProp_t, wrapped_hipGetDeviceProperties};
-use libloading;
+mod wrapper;
+use libloading::{self, Symbol};
+use wrapper::Wrapper;
 
 fn main() {
     let a = my_macro!(
@@ -30,7 +30,7 @@ fn main() {
 #define THREADS_PER_BLOCK_Y 16
 #define THREADS_PER_BLOCK_Z 1
 
-__global__ void vectoradd_float(float *__restrict__ a, const float *__restrict__ b, const float *__restrict__ c, int width, int height)
+extern "C" __global__ void vectoradd_float(float *__restrict__ a, const float *__restrict__ b, const float *__restrict__ c, int width, int height)
 {
 
   int x = hipBlockDim_x * hipBlockIdx_x + hipThreadIdx_x;
@@ -123,16 +123,33 @@ extern "C" void hello_from_macro()
 "#
     );
 
-    println!("{:?}", a);
+    unsafe {
+        let a = a.unwrap();
+        let func: Result<Symbol<unsafe extern "C" fn()>, libloading::Error> =
+            a.get("hello_from_macro".as_bytes());
+        println!("{:?}", func);
+        if let Ok(f) = func {
+            f();
+        }
 
+        let gpu_kernel: Result<
+            Symbol<unsafe extern "C" fn(*mut f32, *mut f32, *mut f32, i32, i32)>,
+            libloading::Error,
+        > = a.get("vectoradd_float".as_bytes());
+        println!("{:?}", gpu_kernel);
+    }
 
-    let a = unsafe { wrapped_hipGetDeviceProperties( 0) };
+    let mut wrapper = Wrapper::new().unwrap();
+    let mut host_data = [1f32, 2f32, 3f32, 4f32, 5f32, 6f32, 7f32, 8f32, 9f32, 10f32];
+    let size = 10 * size_of::<f32>();
+    let device_data = wrapper.create_device_memory(size).unwrap();
+    wrapper
+        .copy_to_device(&device_data, host_data.as_mut_ptr(), size)
+        .unwrap();
 
-    let mut data = [0;256];
-    data.copy_from_slice(&a.name);
-
-    println!(
-        "{}",
-        String::from_utf8_lossy(&data)
-    )
+    let mut new_data = [0f32; 10];
+    wrapper
+        .copy_from_device(&device_data, new_data.as_mut_ptr(), size)
+        .unwrap();
+    println!("{:?}", new_data);
 }

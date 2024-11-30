@@ -1,10 +1,8 @@
 extern crate proc_macro;
-use libloading;
 use std::{
     fs::File,
     io::{Read, Write},
-    process::{Command, Stdio},
-    str::FromStr,
+    process::Command,
 };
 extern crate cargo_emit;
 use cargo_emit::warning;
@@ -37,10 +35,8 @@ pub fn my_macro(item: TokenStream) -> TokenStream {
     if let Some(mut stderr) = cmd.stderr {
         let mut s = String::new();
         _ = stderr.read(unsafe { s.as_bytes_mut() });
-        panic!("{}", s);
+        //panic!("{}", s);
     }
 
-    let tokens = "(unsafe {libloading::Library::new(\"./libfile.so\")})";
-
-    TokenStream::from_str(&tokens).unwrap()
+    "(unsafe {libloading::Library::new(\"./libfile.so\")})".parse().unwrap()
 }
