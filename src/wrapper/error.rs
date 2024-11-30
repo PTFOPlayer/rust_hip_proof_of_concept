@@ -1,5 +1,7 @@
+#![allow(non_camel_case_types)]
+#[derive(PartialEq, Eq, PartialOrd, Ord, Debug, Clone, Copy)]
 #[repr(C)]
-pub enum hipError_t
+pub enum HipErrorT
 {
   hipSuccess,
   hipErrorInvalidContext,
@@ -24,4 +26,13 @@ pub enum hipError_t
   hipErrorHostMemoryNotRegistered,
   hipErrorMapBufferObjectFailed,
   hipErrorTbd
+}
+
+impl HipErrorT {
+  pub fn guard(self) -> Result<(), Self> {
+    if self == Self::hipSuccess {
+        return Ok(());
+    }
+    Err(self)
+  }
 }

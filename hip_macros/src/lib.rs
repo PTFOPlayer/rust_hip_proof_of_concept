@@ -23,7 +23,7 @@ pub fn my_macro(item: TokenStream) -> TokenStream {
 
     let mut binding = Command::new("hipcc");
     let cmd = binding
-        .args(["file.cpp", "-shared", "-fPIC", "-o", "libfile.so"])
+        .args(["file.cpp", "-shared", "-fPIC", "-o", "./libfile.so"])
         .spawn()
         .unwrap();
 
@@ -35,7 +35,7 @@ pub fn my_macro(item: TokenStream) -> TokenStream {
     if let Some(mut stderr) = cmd.stderr {
         let mut s = String::new();
         _ = stderr.read(unsafe { s.as_bytes_mut() });
-        //panic!("{}", s);
+        warning!("{}", s);
     }
 
     "(unsafe {libloading::Library::new(\"./libfile.so\")})".parse().unwrap()
