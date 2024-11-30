@@ -4,6 +4,22 @@ use libloading::{self, Symbol};
 use wrapper::Wrapper;
 
 fn main() {
+
+  let mut wrapper = Wrapper::new().unwrap();
+  let mut host_data = [1f32, 2f32, 3f32, 4f32, 5f32, 6f32, 7f32, 8f32, 9f32, 10f32];
+  let size = 10 * size_of::<f32>();
+  let device_data = wrapper.create_device_memory(size).unwrap();
+  wrapper
+      .copy_to_device(&device_data, host_data.as_mut_ptr(), size)
+      .unwrap();
+
+  let mut new_data = [0f32; 10];
+  wrapper
+      .copy_from_device(&device_data, new_data.as_mut_ptr(), size)
+      .unwrap();
+  println!("{:?}", new_data);
+
+
     let a = my_macro!(
         r#"
 #define __HIP_PLATFORM_AMD__
@@ -138,18 +154,4 @@ extern "C" void hello_from_macro()
         > = a.get("vectoradd_float".as_bytes());
         println!("{:?}", gpu_kernel);
     }
-
-    let mut wrapper = Wrapper::new().unwrap();
-    let mut host_data = [1f32, 2f32, 3f32, 4f32, 5f32, 6f32, 7f32, 8f32, 9f32, 10f32];
-    let size = 10 * size_of::<f32>();
-    let device_data = wrapper.create_device_memory(size).unwrap();
-    wrapper
-        .copy_to_device(&device_data, host_data.as_mut_ptr(), size)
-        .unwrap();
-
-    let mut new_data = [0f32; 10];
-    wrapper
-        .copy_from_device(&device_data, new_data.as_mut_ptr(), size)
-        .unwrap();
-    println!("{:?}", new_data);
 }

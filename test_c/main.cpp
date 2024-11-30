@@ -40,6 +40,21 @@ using namespace std;
 int main()
 {
 
+  float *host;
+  host = (float *)malloc(10 * sizeof(float));
+  for(int i = 0; i < 10; i++)host[i] = (float)i * 0.5;
+  
+  float *device;
+  HIP_ASSERT(hipMalloc((void **)&device, 10 * sizeof(float)));
+  
+  HIP_ASSERT(hipMemcpy(device, host, 10 * sizeof(float), hipMemcpyHostToDevice));
+  
+  float *host_res;
+  host_res = (float *)malloc(10 * sizeof(float));
+  
+  HIP_ASSERT(hipMemcpy(host_res, device, 10 * sizeof(float), hipMemcpyDeviceToHost));
+  for(int i = 0; i < 10; i++)printf("%f\n", host_res[i]);
+
   float *hostA;
   float *hostB;
   float *hostC;

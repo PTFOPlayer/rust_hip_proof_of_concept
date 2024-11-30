@@ -2,6 +2,7 @@ use std::{os::raw::c_void, ptr::null_mut};
 
 use libloading::{Library, Symbol};
 mod error;
+#[derive(Debug)]
 pub struct Wrapper {
     lib: Library,
 }
@@ -18,11 +19,12 @@ impl Wrapper {
         size: usize,
     ) -> Result<DeviceMemory<T>, libloading::Error> {
         unsafe {
-            let dev_mem = DeviceMemory::<T> { ptr: null_mut() };
+            let mut dev_mem = DeviceMemory::<T> { ptr: null_mut() };
             let symbol = self.lib.get::<Symbol<
-                extern "C" fn(*mut libc::c_void, usize) -> error::hipError_t,
+                extern "C" fn(*mut *mut libc::c_void, usize) -> error::hipError_t,
             >>(b"hipMalloc")?;
-            symbol(dev_mem.ptr.cast(), size);
+            let ptr = &mut dev_mem.ptr as *mut *mut T;
+            symbol(ptr.cast(), size);
             Ok(dev_mem)
         }
     }
@@ -63,7 +65,7 @@ impl Wrapper {
                     usize,
                 ) -> error::hipError_t,
             >>(b"hipMemcpy")?;
-            symbol(dev_mem.ptr.cast(), dst.cast(), size, 2);
+            symbol(dst.cast(), dev_mem.ptr.cast(), size, 2);
 
             Ok(())
         }
