@@ -1,15 +1,18 @@
 extern crate proc_macro;
-use std::{
-    fs::File,
-    io::{Read, Write},
-    process::Command,
+use std::{fs::{self, File}, io::{Read, Write}, path::Path, process::Command
 };
 extern crate cargo_emit;
 use cargo_emit::warning;
 use proc_macro::TokenStream;
 #[proc_macro]
 pub fn my_macro(item: TokenStream) -> TokenStream {
-    let mut file = match File::create("./file.cpp") {
+    if !Path::new("./kernels").exists() {
+       fs::DirBuilder::new().create("./kernels").unwrap();
+    }
+    let out_dir = "./kernels".to_owned();
+    let file_path = out_dir.clone()+"/file.cpp";
+    let lib_path = out_dir.clone()+"/libfile.so";
+    let mut file = match File::create(file_path.clone()) {
         Ok(res) => res,
         Err(err) => panic!("file creation error ~: {}", err),
     };
@@ -23,9 +26,8 @@ pub fn my_macro(item: TokenStream) -> TokenStream {
 
     let mut binding = Command::new("hipcc");
     let cmd = binding
-        .args(["file.cpp", "-shared", "-fPIC", "-o", "./libfile.so"])
-        .spawn()
-        .unwrap();
+        .args([&file_path, "-shared", "-fPIC", "-o", &lib_path])
+        .spawn().expect("compilation error");
 
     if let Some(mut stdout) = cmd.stdout {
         let mut s = String::new();
@@ -37,6 +39,7 @@ pub fn my_macro(item: TokenStream) -> TokenStream {
         _ = stderr.read(unsafe { s.as_bytes_mut() });
         warning!("{}", s);
     }
-
-    "(unsafe {libloading::Library::new(\"./libfile.so\")})".parse().unwrap()
+    let out = String::from("(unsafe {libloading::Library::new(\"") + &lib_path + "\")})"; 
+    warning!("{}", out);
+    out.parse().expect("parse error")
 }

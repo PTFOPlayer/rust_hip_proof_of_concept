@@ -4,32 +4,22 @@ use itertools::izip;
 use libloading::{self, Symbol};
 use wrapper::{Dim3, Wrapper};
 
+
+const WIDTH: usize = 1024;
+const HEIGHT: usize = 1024;
+const NUM: usize = WIDTH * HEIGHT;
+const THREADS_PER_BLOCK_X: usize = 16;
+const THREADS_PER_BLOCK_Y: usize = 16;
+const THREADS_PER_BLOCK_Z: usize = 1;
+
+const DATA_SIZE: usize = NUM * size_of::<f32>();
+
 fn main() {
-    let a = my_macro!(
+    let kernel = my_macro!(
         r#"
 #define __HIP_PLATFORM_AMD__
-
-#include <algorithm>
-#include <stdlib.h>
-#include <iostream>
-#include <assert.h>
 #include <hip/hip_runtime.h>
 #include <hip/amd_detail/amd_hip_runtime.h>
-
-#ifdef NDEBUG
-#define HIP_ASSERT(x) x
-#else
-#define HIP_ASSERT(x) (assert((x) == hipSuccess))
-#endif
-
-#define WIDTH 1024
-#define HEIGHT 1024
-
-#define NUM (WIDTH * HEIGHT)
-
-#define THREADS_PER_BLOCK_X 16
-#define THREADS_PER_BLOCK_Y 16
-#define THREADS_PER_BLOCK_Z 1
 
 extern "C" __global__ void vectoradd_float(float *__restrict__ a, const float *__restrict__ b, const float *__restrict__ c, int width, int height)
 {
@@ -44,35 +34,13 @@ extern "C" __global__ void vectoradd_float(float *__restrict__ a, const float *_
   }
 }
 
-using namespace std;
-
-extern "C" void launcher(float *__restrict__ a, const float *__restrict__ b, const float *__restrict__ c, int width, int height) {
-  vectoradd_float<<<dim3(WIDTH / THREADS_PER_BLOCK_X, HEIGHT / THREADS_PER_BLOCK_Y),
-                    dim3(THREADS_PER_BLOCK_X, THREADS_PER_BLOCK_Y), 0, 0>>>(a, b, c, WIDTH, HEIGHT);
-
+extern "C" void launcher(void (*func)(...), dim3 d1, dim3 d2, ...) {
+  func<<<d1,d2, 0, 0>>>(a, b, c, width, height);
 }
-
 "#
-    );
-    let a = a.unwrap();
+    ).unwrap();
 
-    unsafe {
-        let func: Result<Symbol<unsafe extern "C" fn()>, libloading::Error> =
-            a.get("hello_from_macro".as_bytes());
-        println!("{:?}", func);
-        if let Ok(f) = func {
-            f();
-        }
-    }
 
-    const WIDTH: usize = 1024;
-    const HEIGHT: usize = 1024;
-    const NUM: usize = (WIDTH * HEIGHT);
-    const THREADS_PER_BLOCK_X: usize = 16;
-    const THREADS_PER_BLOCK_Y: usize = 16;
-    const THREADS_PER_BLOCK_Z: usize = 1;
-
-    const DATA_SIZE: usize = NUM * size_of::<f32>();
 
     let mut wrapper = Wrapper::new().unwrap();
 
@@ -99,16 +67,29 @@ extern "C" void launcher(float *__restrict__ a, const float *__restrict__ b, con
         let gpu_kernel: Result<
             Symbol<unsafe extern "C" fn(*mut f32, *mut f32, *mut f32, i32, i32)>,
             libloading::Error,
-        > = a.get(b"vectoradd_float");
+        > = kernel.get(b"vectoradd_float");
         println!("{:?}", gpu_kernel);
 
         let launcher: Result<
-            Symbol<unsafe extern "C" fn(*mut f32, *mut f32, *mut f32, i32, i32)>,
+            Symbol<unsafe extern "C" fn(*mut libc::c_void, Dim3, Dim3, ...)>,
             libloading::Error,
-        > = a.get(b"launcher");
+        > = kernel.get(b"launcher");
         println!("{:?}", launcher);
+        let d1 = Dim3 {
+            x: (WIDTH / THREADS_PER_BLOCK_X) as u32,
+            y: (HEIGHT / THREADS_PER_BLOCK_Y) as u32,
+            z: 1,
+        };
+        let d2 = Dim3 {
+            x: THREADS_PER_BLOCK_X as u32,
+            y: THREADS_PER_BLOCK_Y as u32,
+            z: 1,
+        };
 
         launcher.unwrap()(
+            gpu_kernel.unwrap().try_as_raw_ptr().unwrap(),
+            d1,
+            d2,
             device_a.ptr,
             device_b.ptr,
             device_c.ptr,
@@ -121,15 +102,6 @@ extern "C" void launcher(float *__restrict__ a, const float *__restrict__ b, con
         .copy_from_device(&device_a, host_a.as_mut_ptr(), DATA_SIZE)
         .unwrap();
 
-    let err = izip!(host_a, host_b, host_c).fold(
-        0,
-        |org, (a, b, c)| {
-            if a != b + c {
-                org + 1
-            } else {
-                org
-            }
-        },
-    );
+    let err = izip!(host_a, host_b, host_c).fold(0, |org, (a, b, c)| org + (a != b + c) as u32);
     println!("errors: {}", err);
 }

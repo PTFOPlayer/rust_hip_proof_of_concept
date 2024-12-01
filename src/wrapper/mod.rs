@@ -1,12 +1,15 @@
 use std::ptr::null_mut;
 
 use error::HipErrorT;
-use libc::size_t;
 use libloading::{os::unix::Symbol, Library};
 mod error;
 
 #[repr(C)]
-pub struct Dim3 (pub u32, pub u32, pub u32);
+pub struct Dim3 {
+    pub x: u32,
+    pub y: u32,
+    pub z: u32,
+}
 
 #[derive(Debug)]
 pub struct Wrapper {
@@ -36,9 +39,9 @@ impl Wrapper {
                 ) -> error::HipErrorT>(b"hipMemcpy")?
                 .into_raw();
 
-                // let launch_kernel = lib
-                // .get::<extern "C" fn(*mut libc::c_void, Dim3, Dim3, size_t, size_t, ...) -> error::HipErrorT>(b"hipLaunchKernelGGL")?
-                // .into_raw();
+            // let launch_kernel = lib
+            // .get::<extern "C" fn(*mut libc::c_void, Dim3, Dim3, size_t, size_t, ...) -> error::HipErrorT>(b"hipLaunchKernelGGL")?
+            // .into_raw();
             Ok(Self {
                 _lib: lib,
                 hip_malloc,
@@ -72,7 +75,6 @@ impl Wrapper {
     ) -> Result<(), HipErrorT> {
         self.hip_memcpy.clone()(dst.cast(), dev_mem.ptr.cast(), size, 2).guard()
     }
-
 }
 
 pub struct DeviceMemory<T> {
