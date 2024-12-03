@@ -1,105 +1,60 @@
-use hip_macros::*;
 mod wrapper;
 use itertools::izip;
-use libloading::{self, Symbol};
-use wrapper::{Dim3, Wrapper};
-
+use wrapper::{Dim3, KernelSettings, Wrapper};
 
 const WIDTH: usize = 1024;
 const HEIGHT: usize = 1024;
 const NUM: usize = WIDTH * HEIGHT;
-const THREADS_PER_BLOCK_X: usize = 16;
-const THREADS_PER_BLOCK_Y: usize = 16;
-const THREADS_PER_BLOCK_Z: usize = 1;
+const THREADS_X: usize = 16;
+const THREADS_Y: usize = 16;
+const SIZE: usize = NUM * size_of::<f32>();
 
-const DATA_SIZE: usize = NUM * size_of::<f32>();
+#[repr(C)]
+struct Data {
+    a: *mut f32,
+    b: *mut f32,
+    c: *mut f32,
+    width: i32,
+    height: i32,
+}
 
 fn main() {
-    let kernel = my_macro!(
-        r#"
-#define __HIP_PLATFORM_AMD__
-#include <hip/hip_runtime.h>
-#include <hip/amd_detail/amd_hip_runtime.h>
-
-extern "C" __global__ void vectoradd_float(float *__restrict__ a, const float *__restrict__ b, const float *__restrict__ c, int width, int height)
-{
-
-  int x = hipBlockDim_x * hipBlockIdx_x + hipThreadIdx_x;
-  int y = hipBlockDim_y * hipBlockIdx_y + hipThreadIdx_y;
-
-  int i = y * width + x;
-  if (i < (width * height))
-  {
-    a[i] = b[i] + c[i];
-  }
-}
-
-extern "C" void launcher(void (*func)(...), dim3 d1, dim3 d2, ...) {
-  func<<<d1,d2, 0, 0>>>(a, b, c, width, height);
-}
-"#
-    ).unwrap();
-
-
-
     let mut wrapper = Wrapper::new().unwrap();
 
-    let mut host_a = vec![0f32; DATA_SIZE];
-    let mut host_b = vec![0f32; DATA_SIZE];
-    let mut host_c = vec![0f32; DATA_SIZE];
+    let mut host_a = vec![0f32; SIZE];
+    let mut host_b = vec![0f32; SIZE];
+    let mut host_c = vec![0f32; SIZE];
     for i in 0..NUM {
         host_b[i] = i as f32;
         host_c[i] = i as f32 * 100.0f32;
     }
 
-    let device_a = wrapper.create_device_memory::<f32>(DATA_SIZE).unwrap();
-    let device_b = wrapper.create_device_memory::<f32>(DATA_SIZE).unwrap();
-    let device_c = wrapper.create_device_memory::<f32>(DATA_SIZE).unwrap();
-
-    wrapper
-        .copy_to_device(&device_b, host_b.as_mut_ptr(), DATA_SIZE)
+    let device_a = wrapper.create_device_memory::<f32>(SIZE).unwrap();
+    let device_b = wrapper
+        .create_device_memory_from_host::<f32>(&mut host_b, SIZE)
         .unwrap();
-    wrapper
-        .copy_to_device(&device_c, host_c.as_mut_ptr(), DATA_SIZE)
+    let device_c = wrapper
+        .create_device_memory_from_host::<f32>(&mut host_c, SIZE)
         .unwrap();
 
-    unsafe {
-        let gpu_kernel: Result<
-            Symbol<unsafe extern "C" fn(*mut f32, *mut f32, *mut f32, i32, i32)>,
-            libloading::Error,
-        > = kernel.get(b"vectoradd_float");
-        println!("{:?}", gpu_kernel);
+    let d1 = Dim3::from_xy((WIDTH / THREADS_X) as u32, (HEIGHT / THREADS_Y) as u32);
+    let d2 = Dim3::from_xy(THREADS_X as u32, THREADS_Y as u32);
 
-        let launcher: Result<
-            Symbol<unsafe extern "C" fn(*mut libc::c_void, Dim3, Dim3, ...)>,
-            libloading::Error,
-        > = kernel.get(b"launcher");
-        println!("{:?}", launcher);
-        let d1 = Dim3 {
-            x: (WIDTH / THREADS_PER_BLOCK_X) as u32,
-            y: (HEIGHT / THREADS_PER_BLOCK_Y) as u32,
-            z: 1,
-        };
-        let d2 = Dim3 {
-            x: THREADS_PER_BLOCK_X as u32,
-            y: THREADS_PER_BLOCK_Y as u32,
-            z: 1,
-        };
+    let data = Data {
+        a: device_a.ptr,
+        b: device_b.ptr,
+        c: device_c.ptr,
+        width: WIDTH as i32,
+        height: HEIGHT as i32,
+    };
 
-        launcher.unwrap()(
-            gpu_kernel.unwrap().try_as_raw_ptr().unwrap(),
-            d1,
-            d2,
-            device_a.ptr,
-            device_b.ptr,
-            device_c.ptr,
-            WIDTH as i32,
-            HEIGHT as i32,
-        );
-    }
+    let kernel = wrapper.read_kernel::<Data>("./kernels/libfile.so", "vectoradd_float");
+    let settings = KernelSettings { d1, d2 };
+
+    wrapper.launch_kernel(kernel, settings, data);
 
     wrapper
-        .copy_from_device(&device_a, host_a.as_mut_ptr(), DATA_SIZE)
+        .copy_from_device(&device_a, &mut host_a, SIZE)
         .unwrap();
 
     let err = izip!(host_a, host_b, host_c).fold(0, |org, (a, b, c)| org + (a != b + c) as u32);

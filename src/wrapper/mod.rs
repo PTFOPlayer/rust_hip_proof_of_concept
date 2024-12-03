@@ -1,4 +1,4 @@
-use std::ptr::null_mut;
+use std::{marker::PhantomData, ptr::null_mut};
 
 use error::HipErrorT;
 use libloading::{os::unix::Symbol, Library};
@@ -9,6 +9,32 @@ pub struct Dim3 {
     pub x: u32,
     pub y: u32,
     pub z: u32,
+}
+
+impl Dim3 {
+    pub fn from_x(x: u32) -> Self {
+        Dim3 { x, y: 1, z: 1 }
+    }
+
+    pub fn from_y(y: u32) -> Self {
+        Dim3 { x: 1, y, z: 1 }
+    }
+
+    pub fn from_z(z: u32) -> Self {
+        Dim3 { x: 1, y: 1, z }
+    }
+
+    pub fn from_xy(x: u32, y: u32) -> Self {
+        Dim3 { x, y, z: 1 }
+    }
+
+    pub fn from_xz(x: u32, z: u32) -> Self {
+        Dim3 { x, y: 1, z }
+    }
+
+    pub fn from_yz(y: u32, z: u32) -> Self {
+        Dim3 { x: 1, y, z }
+    }
 }
 
 #[derive(Debug)]
@@ -58,25 +84,68 @@ impl Wrapper {
         Ok(dev_mem)
     }
 
+    pub fn create_device_memory_from_host<T>(&mut self, src: &mut [T], size: usize) -> Result<DeviceMemory<T>, HipErrorT> {
+        let dev_mem = self.create_device_memory::<T>(size)?;
+        self.copy_to_device(&dev_mem, src, size)?;
+        Ok(dev_mem)
+    }
+
     pub fn copy_to_device<T>(
         &mut self,
         dev_mem: &DeviceMemory<T>,
-        src: *mut T,
+        src: &mut [T],
         size: usize,
     ) -> Result<(), HipErrorT> {
-        self.hip_memcpy.clone()(dev_mem.ptr.cast(), src.cast(), size, 1).guard()
+        self.hip_memcpy.clone()(dev_mem.ptr.cast(), src.as_mut_ptr().cast(), size, 1).guard()
     }
 
     pub fn copy_from_device<T>(
         &mut self,
         dev_mem: &DeviceMemory<T>,
-        dst: *mut T,
+        dst: &mut [T],
         size: usize,
     ) -> Result<(), HipErrorT> {
-        self.hip_memcpy.clone()(dst.cast(), dev_mem.ptr.cast(), size, 2).guard()
+        self.hip_memcpy.clone()(dst.as_mut_ptr().cast(), dev_mem.ptr.cast(), size, 2).guard()
+    }
+
+    pub fn read_kernel<T>(&self, path: &str, entry: &'static str) -> Kernel<T> {
+        Kernel {
+            lib: unsafe { libloading::Library::new(&path).unwrap() },
+            entry: &entry,
+            _phantom: PhantomData,
+        }
+    }
+
+    pub fn launch_kernel<T>(&self, kernel: Kernel<T>, settings: KernelSettings, data: T) {
+        unsafe {
+            let gpu_kernel: libloading::Symbol<unsafe extern "C" fn(T)> =
+                kernel.lib.get(kernel.entry.as_bytes()).unwrap();
+
+            let launcher: libloading::Symbol<
+                unsafe extern "C" fn(*mut libc::c_void, Dim3, Dim3, ...),
+            > = kernel.lib.get(b"launcher").unwrap();
+
+            launcher(
+                gpu_kernel.try_as_raw_ptr().unwrap(),
+                settings.d1,
+                settings.d2,
+                data,
+            );
+        }
     }
 }
 
 pub struct DeviceMemory<T> {
     pub ptr: *mut T,
+}
+
+pub struct Kernel<T> {
+    lib: Library,
+    entry: &'static str,
+    _phantom: PhantomData<T>,
+}
+
+pub struct KernelSettings {
+    pub d1: Dim3,
+    pub d2: Dim3,
 }
