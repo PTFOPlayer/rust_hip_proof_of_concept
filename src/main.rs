@@ -2,18 +2,25 @@ mod wrapper;
 use itertools::izip;
 use wrapper::{Dim3, KernelSettings, Wrapper};
 
-const WIDTH: usize = 1024;
-const HEIGHT: usize = 1024;
+const WIDTH: usize = 10240;
+const HEIGHT: usize = 10240;
 const NUM: usize = WIDTH * HEIGHT;
 const THREADS_X: usize = 16;
 const THREADS_Y: usize = 16;
 const SIZE: usize = NUM * size_of::<f32>();
 
 #[repr(C)]
-struct Data {
+struct SaxpyData {
     a: *mut f32,
     b: *mut f32,
     c: *mut f32,
+    width: i32,
+    height: i32,
+}
+
+#[repr(C)]
+struct X2Data {
+    data: *mut f32,
     width: i32,
     height: i32,
 }
@@ -40,7 +47,11 @@ fn main() {
     let d1 = Dim3::from_xy((WIDTH / THREADS_X) as u32, (HEIGHT / THREADS_Y) as u32);
     let d2 = Dim3::from_xy(THREADS_X as u32, THREADS_Y as u32);
 
-    let data = Data {
+    let settings = KernelSettings { d1, d2 };
+    let saxpy = wrapper.read_kernel::<SaxpyData>("./kernels/libfile.so", "saxpy");
+    let x2 = wrapper.read_kernel::<X2Data>("./kernels/libfile.so", "x2");
+
+    let data = SaxpyData {
         a: device_a.ptr,
         b: device_b.ptr,
         c: device_c.ptr,
@@ -48,15 +59,21 @@ fn main() {
         height: HEIGHT as i32,
     };
 
-    let kernel = wrapper.read_kernel::<Data>("./kernels/libfile.so", "vectoradd_float");
-    let settings = KernelSettings { d1, d2 };
+    wrapper.launch_kernel(saxpy, settings, data);
 
-    wrapper.launch_kernel(kernel, settings, data);
+    let x2_data = X2Data {
+        data: device_a.ptr,
+        width: WIDTH as i32,
+        height: HEIGHT as i32,
+    };
+
+    wrapper.launch_kernel(x2, settings, x2_data);
 
     wrapper
         .copy_from_device(&device_a, &mut host_a, SIZE)
         .unwrap();
 
-    let err = izip!(host_a, host_b, host_c).fold(0, |org, (a, b, c)| org + (a != b + c) as u32);
+    let err =
+        izip!(host_a, host_b, host_c).fold(0, |org, (a, b, c)| org + (a != (b + c) * 2.0) as u32);
     println!("errors: {}", err);
 }
