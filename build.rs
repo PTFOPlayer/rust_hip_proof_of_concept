@@ -8,7 +8,7 @@ fn compile_kernel(file_path: &Path) {
     let file_stem = file_path.file_stem().unwrap();
     let dir = file_path.parent().unwrap();
     let file = file_path.to_str().unwrap();
-
+    
     let out = dir.to_str().unwrap().to_string() + "/lib" + file_stem.to_str().unwrap() + ".so";
 
     let mut binding = Command::new("hipcc");
