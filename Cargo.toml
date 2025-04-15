@@ -10,6 +10,5 @@ cc = "1.1.18"
 itertools = "0.13.0"
 libc = "0.2.147"
 libloading = "0.8.3"
-proc-macro2 = "1.0.92"
-
+hip-runtime-sys = "0.1"
 [build-dependencies]
