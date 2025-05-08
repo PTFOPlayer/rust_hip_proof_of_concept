@@ -4,3 +4,6 @@
 file.cpp
 libfile.so
 *.out
+
+/trash
+/kernel_sources

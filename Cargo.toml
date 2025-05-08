@@ -10,5 +10,10 @@ cc = "1.1.18"
 itertools = "0.13.0"
 libc = "0.2.147"
 libloading = "0.8.3"
-hip-runtime-sys = "0.1"
+rocm-rs = "0.1.0"
+hip_poc_macros = { path = "hip_poc_macros" }
+
 [build-dependencies]
+
+[patch.crates-io]
+rocm-rs ={ git = "https://github.com/PTFOPlayer/rocm-rs"}
