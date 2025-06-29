@@ -1,19 +1,12 @@
 [package]
 name = "hip_test"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-cc = "1.1.18"
-itertools = "0.13.0"
-libc = "0.2.147"
-libloading = "0.8.3"
-rocm-rs = "0.1.0"
-hip_poc_macros = { path = "hip_poc_macros" }
+rocm-rs = "0.3.2"
+rocm_kernel_macros = {path = "../rocm_kernel_macros"}
 
 [build-dependencies]
-
-[patch.crates-io]
-rocm-rs ={ git = "https://github.com/PTFOPlayer/rocm-rs"}
