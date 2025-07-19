@@ -1,11 +1,11 @@
 use std::path::PathBuf;
 
-use rocm_kernel_macros::{amdgpu_kernel_begin, amdgpu_kernel_attr, amdgpu_kernel_finalize};
+use rocm_kernel_macros::{amdgpu_kernel_attr, amdgpu_kernel_finalize, amdgpu_kernel_init};
 use rocm_rs::hip::*;
 
 const LEN: usize = 1024;
 
-amdgpu_kernel_begin!();
+amdgpu_kernel_init!();
 
 #[amdgpu_kernel_attr]
 struct Ops {
@@ -25,7 +25,7 @@ impl Ops {
 
 #[amdgpu_kernel_attr]
 fn kernel(input: *mut u32, output: *mut u32) {
-    let id = unsafe { workitem_id_x() as usize };
+    let id = workitem_id_x() as usize;
     let mut ops = unsafe {
         Ops {
             num: *input.add(id),
@@ -40,7 +40,7 @@ fn kernel(input: *mut u32, output: *mut u32) {
     }
 }
 
-amdgpu_kernel_finalize!();
+const AMDGPU_KERNEL_BINARY_PATH: &str = amdgpu_kernel_finalize!();
 
 fn main() -> Result<()> {
     let device = Device::new(0)?;
